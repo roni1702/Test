@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIOM Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;600;700&display=swap');
+        body { font-family: 'Hind Siliguri', sans-serif; background-color: #020617; color: #f8fafc; overflow-x: hidden; margin: 0; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .reveal { opacity: 0; transform: translateY(20px); transition: all 0.5s ease-out; }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        .splash-screen { position: fixed; inset: 0; background: #020617; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #status-bar { transition: all 0.4s ease; height: 0; overflow: hidden; z-index: 1100; }
+        #status-bar.show { height: 30px; }
+        
+        /* Perfect Alignment Fix for Y-Axis */
+        .chart-container { position: relative; height: 210px; display: flex; align-items: flex-start; }
+        .y-axis-fixed { 
+            width: 35px; 
+            height: 180px; /* Chart grid area height */
+            display: flex; 
+            flex-direction: column-reverse; 
+            justify-content: space-between; 
+            padding-bottom: 30px; /* Offset for X-axis labels */
+            padding-top: 10px; 
+            font-size: 10px; 
+            font-weight: bold; 
+            color: #64748b; 
+            background: #020617; 
+            z-index: 20; 
+            border-right: 1px solid #1e293b; 
+            text-align: right; 
+            padding-right: 8px; 
+        }
+        .x-axis-scroll { flex: 1; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .x-axis-scroll::-webkit-scrollbar { display: none; }
+        #admissionChart { height: 210px !important; }
+    </style>
+</head>
+<body>
+
+<div id="status-bar" class="fixed top-0 w-full text-white text-[10px] font-bold flex items-center justify-center uppercase tracking-widest bg-blue-600">
+    <span id="status-text">লোডিং...</span>
+</div>
+
+<div id="splash" class="splash-screen hidden text-center">
+    <h2 class="text-blue-500 text-[10px] tracking-[0.3em] mb-6 font-bold uppercase">একটু জিকির করি</h2>
+    <div id="dhikr-bangla" class="text-4xl font-bold mb-2 text-white"></div>
+    <div id="dhikr-arabic" class="text-2xl text-green-400 mb-10 font-serif"></div>
+    <div class="relative flex items-center justify-center w-24 h-24">
+        <svg class="absolute inset-0 w-full h-full -rotate-90 text-slate-800">
+            <circle cx="48" cy="48" r="40" stroke="currentColor" stroke-width="4" fill="transparent"></circle>
+            <circle id="timer-progress" cx="48" cy="48" r="40" stroke="#3b82f6" stroke-width="4" fill="transparent" stroke-dasharray="251" stroke-dashoffset="0" class="transition-all duration-[10000ms] linear"></circle>
+        </svg>
+        <span id="timer" class="text-3xl font-black text-white">10</span>
+    </div>
+</div>
+
+<div id="app" class="max-w-md mx-auto min-h-screen">
+    <div id="step1" class="min-h-screen flex items-center justify-center p-6 hidden">
+        <div class="glass p-10 rounded-[2.5rem] w-full text-center animate__animated animate__zoomIn">
+            <h1 class="text-2xl font-bold mb-8 text-white">BIOM এর সাথে আপনার সম্পর্ক কি?</h1>
+            <button onclick="selectRole('marketing')" class="w-full bg-blue-600 text-white py-5 rounded-2xl mb-4 font-bold active:scale-95 transition-all shadow-xl">১. মার্কেটিং মেম্বার</button>
+            <button onclick="selectRole('teacher')" class="w-full bg-slate-800 text-slate-300 py-5 rounded-2xl font-bold active:scale-95 transition-all">২. শিক্ষক / শিক্ষিকা</button>
+        </div>
+    </div>
+
+    <div id="step2" class="hidden min-h-screen flex items-center justify-center p-6">
+        <div class="glass p-10 rounded-[2.5rem] w-full animate__animated animate__fadeInRight">
+            <button onclick="location.reload()" class="mb-6 text-blue-400 font-bold">← ফিরে যাই</button>
+            <p class="text-slate-400 font-medium mb-6 text-center font-bold">ভর্তির সময় আপনার যে পেমেন্ট নম্বর দিয়েছিলেন ওটা এখানে দিন</p>
+            <input type="number" id="phoneInput" placeholder="নম্বরটি দিন" class="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-2xl mb-6 outline-none text-xl tracking-widest text-center text-white">
+            <button onclick="fetchMarketingData()" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold shadow-lg active:scale-95 transition-all">তথ্য দেখুন</button>
+        </div>
+    </div>
+
+    <div id="step3" class="hidden min-h-screen flex flex-col p-6 animate__animated animate__fadeIn">
+        <button onclick="location.reload()" class="mt-6 mb-6 text-blue-400 font-bold">← ফিরে যাই</button>
+        <h2 class="text-2xl font-bold text-white mb-8">আপনার নাম সিলেক্ট করুন</h2>
+        <div id="teacherList" class="space-y-3 pb-10"></div>
+    </div>
+
+    <div id="dashboard" class="hidden pb-10">
+        <div class="glass sticky top-0 z-50 p-5 flex justify-between items-center border-b border-slate-800">
+            <div><p id="roleLabel" class="text-[9px] uppercase font-black text-blue-500 mb-1"></p><h2 id="userName" class="text-lg font-bold text-white leading-tight"></h2></div>
+            <div class="text-right"><p class="text-[9px] uppercase font-bold text-slate-500">হাদিয়া</p><h2 id="totalHadia" class="text-xl font-black text-green-500">0</h2></div>
+        </div>
+
+        <div id="statsGrid" class="grid grid-cols-2 gap-3 p-4">
+            <div class="glass p-5 rounded-3xl"><p class="text-[10px] font-bold text-slate-500 uppercase mb-1">মোট শিক্ষার্থী</p><h3 id="statStudents" class="text-3xl font-black text-blue-500 leading-none">0</h3></div>
+            <div id="seatBox" class="hidden glass p-5 rounded-3xl"><p class="text-[10px] font-bold text-slate-500 uppercase mb-1">সিট সংখ্যা</p><h3 class="text-2xl font-black text-orange-500 leading-none"><span id="statSeatsUsed">0</span><span class="text-xs text-slate-600">/</span><span id="statSeatsTotal" class="text-xs text-slate-600">0</span></h3></div>
+            <div onclick="openLeaderboard()" class="glass p-5 rounded-3xl cursor-pointer active:scale-95 transition-all"><p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Position</p><h3 class="text-3xl font-black text-purple-500 leading-none"><span id="statRank">0</span><span id="statTotalUsers" class="text-xs text-slate-600 italic"></span></h3></div>
+        </div>
+
+        <div class="px-4 mb-4">
+            <div class="bg-slate-900/50 py-3 px-5 rounded-2xl flex justify-between items-center text-[10px] font-black uppercase border border-slate-800 tracking-wider">
+                <div class="text-red-500">Pending: <span id="countPending" class="text-slate-200">0</span></div>
+                <div class="text-green-600">Paid: <span id="countPaid" class="text-slate-200">0</span></div>
+                <div class="text-blue-500">Free: <span id="countFree" class="text-slate-200">0</span></div>
+            </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="px-4 mb-6">
+            <div class="glass rounded-3xl overflow-hidden border border-slate-800">
+                <div class="flex justify-between items-center p-4 border-b border-slate-800">
+                    <div class="flex bg-slate-950 p-1 rounded-xl">
+                        <button id="btnMe" onclick="switchScope('me')" class="text-[9px] font-bold px-4 py-1.5 rounded-lg bg-blue-600 text-white transition-all">ONLY ME</button>
+                        <button id="btnEveryone" onclick="switchScope('everyone')" class="text-[9px] font-bold px-4 py-1.5 rounded-lg text-slate-500 transition-all ml-1">EVERYONE</button>
+                    </div>
+                    <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">ADMISSION ANALYSES</p>
+                </div>
+                <div class="chart-container">
+                    <div id="manualYAxis" class="y-axis-fixed"></div>
+                    <div class="x-axis-scroll scrollbar-hide">
+                        <div id="chartWidthWrapper" style="height: 210px;">
+                            <canvas id="admissionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-4"><h3 class="font-bold text-slate-400 mb-4 px-1 uppercase tracking-widest text-[10px]">শিক্ষার্থী তালিকা</h3><div id="studentContainer" class="space-y-3"></div></div>
+    </div>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-end justify-center p-4">
+    <div class="bg-slate-900 w-full max-w-lg rounded-t-[2.5rem] p-8 border-t border-slate-800 animate__animated animate__slideInUp">
+        <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold text-white">বিস্তারিত তথ্য</h3><button onclick="closeModal()" class="w-10 h-10 bg-slate-800 rounded-full text-slate-400">&times;</button></div>
+        <div id="modalContent" class="space-y-3 max-h-[60vh] overflow-y-auto scrollbar-hide text-sm"></div>
+    </div>
+</div>
+
+<div id="lbModal" class="hidden fixed inset-0 bg-slate-950/95 z-[210] flex items-center justify-center p-4">
+    <div class="bg-slate-900 w-full max-w-md rounded-[2.5rem] border border-slate-800 animate__animated animate__zoomIn overflow-hidden"><div class="p-8 bg-blue-600 text-white flex justify-between items-center"><h3 class="text-2xl font-bold italic">Leaderboard</h3><button onclick="closeLB()" class="text-2xl">&times;</button></div><div id="lbList" class="p-4 space-y-2 max-h-[60vh] overflow-y-auto bg-slate-950"></div></div>
+</div>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYaSWq9Y35L9puABHnsfqsVK_msGKuc2KFMq76cROmYAzi4laDr03fJhxr4IZ4yLhE/exec"; 
+    let currentData = null, myChart = null, chartScope = 'me';
+
+    window.onload = function() { if (localStorage.getItem('biom_cache')) showSplash(); else document.getElementById('step1').classList.remove('hidden'); };
+
+    function showSplash() {
+        const splash = document.getElementById('splash'); splash.classList.remove('hidden');
+        const dhikrs = [{b:"সুবহানাল্লাহ", a:"سُبْحَانَ ٱللَّٰهِ"}, {b:"আলহামদুলিল্লাহ", a:"ٱلْحَمْدُ লِلَّٰهِ"}, {b:"আল্লাহু আকবার", a:"ٱللَّٰهُ أَكْبَرُ"}, {b:"লা ইলাহা ইল্লাল্লাহু", a:"لَا إِلَٰهَ إِلَّا ٱللَّٰهُ"}];
+        const r = dhikrs[Math.floor(Math.random() * dhikrs.length)];
+        document.getElementById('dhikr-bangla').innerText = r.b; document.getElementById('dhikr-arabic').innerText = r.a;
+        let count = 10;
+        const interval = setInterval(() => { count--; document.getElementById('timer').innerText = count; if (count <= 0) { clearInterval(interval); splash.classList.add('animate__animated', 'animate__fadeOut'); setTimeout(() => { splash.classList.add('hidden'); checkCache(); }, 500); } }, 1000);
+    }
+
+    function checkCache() { const cache = localStorage.getItem('biom_cache'); if (cache) { currentData = JSON.parse(cache); renderDashboard(currentData); autoRefresh(); } else document.getElementById('step1').classList.remove('hidden'); }
+
+    function selectRole(role) { document.getElementById('step1').classList.add('hidden'); if (role === 'marketing') document.getElementById('step2').classList.remove('hidden'); else loadTeacherSelection(); }
+
+    async function loadTeacherSelection() {
+        document.getElementById('step3').classList.remove('hidden'); setStatusBar("লোডিং...", true);
+        try { const res = await fetch(`${SCRIPT_URL}?action=getTeacherList`); const list = await res.json(); const container = document.getElementById('teacherList'); container.innerHTML = ""; list.forEach(name => { const b = document.createElement('button'); b.className = "w-full text-left p-5 bg-slate-800 rounded-2xl font-bold text-white mb-2 shadow-sm active:scale-95 transition-all"; b.innerText = name; b.onclick = () => fetchTeacherData(name); container.appendChild(b); }); setStatusBar("", false); } catch (e) { setStatusBar("Error", true, "bg-red-600"); }
+    }
+
+    async function fetchMarketingData() {
+        const phone = document.getElementById('phoneInput').value; if (!phone) return; setStatusBar("ডেটা আনা হচ্ছে...", true);
+        try { const res = await fetch(`${SCRIPT_URL}?action=getMarketingData&phone=${phone}`); const data = await res.json(); if (!data.found) { alert("আপনার নম্বরটা শিটে খুঁজে পাওয়া যাচ্ছে না।"); setStatusBar("", false); return; } processAndSave(data, "marketing", phone); } catch (e) { setStatusBar("Error!", true, "bg-red-600"); }
+    }
+
+    async function fetchTeacherData(name) { setStatusBar(`${name}...`, true); try { const res = await fetch(`${SCRIPT_URL}?action=getTeacherData&name=${encodeURIComponent(name)}`); const data = await res.json(); processAndSave(data, "teacher", name); } catch (e) { setStatusBar("Error!", true, "bg-red-600"); } }
+
+    function processAndSave(data, role, id) { data.userRole = role; data.userId = id; localStorage.setItem('biom_cache', JSON.stringify(data)); currentData = data; setStatusBar("সফল!", true, "bg-green-600"); setTimeout(() => setStatusBar("", false), 2000); renderDashboard(data); }
+
+    async function autoRefresh() { const action = currentData.userRole === 'marketing' ? 'getMarketingData' : 'getTeacherData'; const param = currentData.userRole === 'marketing' ? 'phone' : 'name'; try { const res = await fetch(`${SCRIPT_URL}?action=${action}&${param}=${encodeURIComponent(currentData.userId)}`); const data = await res.json(); processAndSave(data, currentData.userRole, currentData.userId); } catch (e) { } }
+
+    function switchScope(scope) { chartScope = scope; document.getElementById('btnMe').className = scope === 'me' ? "text-[9px] font-bold px-4 py-1.5 rounded-lg bg-blue-600 text-white transition-all" : "text-[9px] font-bold px-4 py-1.5 rounded-lg text-slate-500 transition-all"; document.getElementById('btnEveryone').className = scope === 'everyone' ? "text-[9px] font-bold px-4 py-1.5 rounded-lg bg-blue-600 text-white transition-all" : "text-[9px] font-bold px-4 py-1.5 rounded-lg text-slate-500 transition-all ml-1"; updateChart(); }
+
+    function renderDashboard(data) {
+        document.getElementById('step2').classList.add('hidden'); document.getElementById('step3').classList.add('hidden'); document.getElementById('dashboard').classList.remove('hidden');
+        document.getElementById('roleLabel').innerText = data.userRole === 'marketing' ? "Marketing Admin" : "Teacher Panel"; document.getElementById('userName').innerText = data.name;
+        animateValue('totalHadia', 0, data.totalHadia, 1500); animateValue('statStudents', 0, data.totalStudents, 1500); animateValue('statRank', 0, data.rank, 1500);
+        document.getElementById('statTotalUsers').innerText = " / " + (data.totalAdmins || data.totalTeachers);
+        animateValue('countPaid', 0, data.paid, 1000); animateValue('countPending', 0, data.pending, 1000); animateValue('countFree', 0, data.free, 1000);
+        if (data.userRole === 'teacher') { document.getElementById('seatBox').classList.remove('hidden'); document.getElementById('statsGrid').classList.replace('grid-cols-2', 'grid-cols-3'); animateValue('statSeatsUsed', 0, data.totalStudents, 1500); document.getElementById('statSeatsTotal').innerText = data.totalSeats; }
+        updateChart();
+        const container = document.getElementById('studentContainer'); container.innerHTML = "";
+        data.students.forEach((s) => {
+            const isPaid = s.status === 'paid' || s.status === 'free';
+            const card = document.createElement('div');
+            card.className = "bg-slate-900/50 p-5 rounded-3xl flex justify-between items-center border border-slate-800 border-l-4 " + (isPaid ? "border-l-green-500" : "border-l-red-500") + " reveal";
+            card.onclick = () => showDetails(s);
+            card.innerHTML = `<div><h4 class="font-bold text-slate-200 text-sm">${s.name}</h4><p class="text-[9px] text-slate-500 uppercase mt-1">রো: ${s.row} • ${s.classTime}</p></div><span class="text-[9px] font-black uppercase ${isPaid ? 'text-green-600' : 'text-red-500'}">${s.status}</span>`;
+            container.appendChild(card);
+        });
+        initReveal();
+    }
+
+    function updateChart() {
+        const ctx = document.getElementById('admissionChart');
+        let labels = [], counts = [];
+        if (chartScope === 'me') {
+            let map = {}; currentData.students.forEach(s => {
+                let d = new Date(s.admissionTime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                if (d !== "Invalid Date") map[d] = (map[d] || 0) + 1;
+            }); labels = Object.keys(map); counts = Object.values(map);
+        } else { labels = Object.keys(currentData.globalChart); counts = Object.values(currentData.globalChart); }
+
+        const maxVal = Math.max(...counts, 5); 
+        const step = Math.ceil(maxVal / 5);
+        const manualY = document.getElementById('manualYAxis'); manualY.innerHTML = '';
+        for (let i = 0; i <= 5; i++) { const span = document.createElement('span'); span.innerText = i * step; manualY.appendChild(span); }
+
+        const containerWidth = document.querySelector('.x-axis-scroll').offsetWidth;
+        const dayWidth = containerWidth / 7;
+        document.getElementById('chartWidthWrapper').style.width = Math.max(containerWidth, labels.length * dayWidth) + "px";
+
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'line', data: { labels, datasets: [{ data: counts, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)', fill: true, tension: 0.3, pointRadius: 5, pointBackgroundColor: '#3b82f6' }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                layout: { padding: { bottom: 10 } },
+                plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e293b', titleColor: '#fff', bodyColor: '#3b82f6', displayColors: false } },
+                scales: { 
+                    y: { beginAtZero: true, max: step * 5, ticks: { display: false }, grid: { color: '#1e293b', drawBorder: false } },
+                    x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#64748b' } }
+                }
+            }
+        });
+    }
+
+    function animateValue(id, start, end, duration) { const obj = document.getElementById(id); let startTimestamp = null; const step = (timestamp) => { if (!startTimestamp) startTimestamp = timestamp; const progress = Math.min((timestamp - startTimestamp) / duration, 1); obj.innerHTML = Math.floor(progress * (end - start) + start); if (progress < 1) window.requestAnimationFrame(step); }; window.requestAnimationFrame(step); }
+
+    function showDetails(s) {
+        const c = document.getElementById('modalContent');
+        c.innerHTML = `<div class="grid grid-cols-2 gap-3"><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">রো নম্বর</p><p class="text-white font-bold text-lg">${s.row}</p></div><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">ভর্তির সময়</p><p class="text-white font-bold text-xs">${s.admissionTime}</p></div></div><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">শিক্ষার্থীর নাম</p><p class="text-white font-bold">${s.name}</p></div><div class="bg-blue-950/30 p-4 rounded-2xl border border-blue-900/50"><p class="text-blue-400 uppercase text-[10px] mb-1">ফেসবুক আইডি</p><a href="${s.fbLink}" target="_blank" class="text-blue-400 underline font-bold">${s.fbName}</a></div>${currentData.userRole === 'marketing' ? `<div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">শিক্ষক/শিক্ষিকার নাম</p><p class="text-white font-bold">${s.teacherName}</p></div>` : `<div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">মার্কেটিং মেম্বার</p><p class="text-white font-bold">${s.marketingName} (${s.marketingPhone})</p></div>`}<div class="grid grid-cols-2 gap-3"><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">শিক্ষার্থীর ফোন</p><p class="text-white font-bold">${s.studentPhone}</p></div><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">ক্লাসের সময়</p><p class="text-white font-bold">${s.classTime}</p></div></div><div class="bg-slate-800 p-4 rounded-2xl border border-slate-700"><p class="text-slate-500 uppercase text-[10px] mb-1">হাদিয়া পাঠানোর মাধ্যম</p><p class="text-white font-bold">${s.hadiaNumber} (${s.hadiaMethod})</p></div><div class="bg-slate-800 p-4 rounded-2xl border border-slate-800"><p class="text-slate-500 uppercase text-[10px] mb-1">শিক্ষার্থীর মন্তব্য</p><p class="italic text-slate-400 text-xs">${s.comment || 'নেই'}</p></div>`;
+        document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function openLeaderboard() { const list = document.getElementById('lbList'); list.innerHTML = ""; currentData.leaderboard.forEach(item => { const div = document.createElement('div'); div.className = `p-4 rounded-2xl flex justify-between items-center border mb-2 ${item.isMe ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-300'}`; div.innerHTML = `<div class="flex items-center gap-4"><span class="opacity-30 font-black">${item.rank}</span><p class="font-bold text-sm">${item.name}</p></div><p class="font-bold text-lg">${item.count}</p>`; list.appendChild(div); }); document.getElementById('lbModal').classList.remove('hidden'); }
+
+    function setStatusBar(text, show, color = "bg-blue-600") { const b = document.getElementById('status-bar'); b.className = `fixed top-0 w-full text-white text-[10px] font-bold flex items-center justify-center uppercase ${color}`; document.getElementById('status-text').innerText = text; show ? b.classList.add('show') : b.classList.remove('show'); }
+
+    function initReveal() { const obs = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); }), { threshold: 0.1 }); document.querySelectorAll('.reveal').forEach(r => obs.observe(r)); }
+    function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+    function closeLB() { document.getElementById('lbModal').classList.add('hidden'); }
+</script>
+
+</body>
+</html>
